@@ -332,3 +332,325 @@ def str_nodes_to_variable_nodes(graph: NxMixedGraph) -> NxMixedGraph:
 
 def _convert(graph: nx.Graph) -> list[tuple[Variable, Variable]]:
     return [(Variable.norm(u), Variable.norm(v)) for u, v in graph.edges()]
+
+
+class ZIdentification:
+    """A package of a query and resulting estimand from identification on a graph."""
+
+    query: Query
+    graph: NxMixedGraph
+    estimand: Expression
+
+    def __init__(
+        self,
+        query: Query,
+        queryI: Query,
+        queryJ: Query,
+        Z,
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+    ) -> None:
+        """Instantiate an identification.
+
+        :param query: The generalized identification query (outcomes/treatments/conditions)
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        """
+        self.query = query
+        self.queryI = queryI
+        self.queryJ = queryJ
+        self.Z=Z
+        self.graph = str_nodes_to_variable_nodes(graph)
+        self.estimand = P(self.graph.nodes()) if estimand is None else estimand
+
+    @classmethod
+    def from_parts(
+        cls,
+        outcomes: set[Variable],
+        treatments: set[Variable],
+        treatmentsI: set[Variable],
+        treatmentsJ: set[Variable],
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+        conditions: set[Variable] | None = None,
+    ) -> Identification:
+        """Instantiate an identification.
+
+        :param outcomes: The outcomes in the query
+        :param treatments: The treatments in the query (e.g., counterfactual variables)
+        :param conditions: The conditions in the query (e.g., coming after the bar)
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        :returns: An identification object
+        """
+        return cls(
+            query=Query(outcomes=outcomes, treatments=treatments.union(treatmentsI).union(treatmentsJ), conditions=conditions),
+            graph=graph,
+            estimand=estimand,
+        )
+
+    @classmethod
+    def from_expression(
+        cls,
+        *,
+        query: Probability | Distribution,
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+    ) -> Identification:
+        """Instantiate an identification.
+
+        :param query: The query probability expression
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        :returns: An identification object
+        """
+        return cls(
+            query=Query.from_expression(query),
+            graph=graph,
+            estimand=estimand,
+        )
+
+    @property
+    def outcomes(self) -> set[Variable]:
+        """Return this identification object's query's outcomes."""
+        return self.query.outcomes
+
+    @property
+    def treatments(self) -> set[Variable]:
+        """Return this identification object's query's treatments."""
+        return self.query.treatments
+    
+    @property
+    def treatmentsI(self) -> set[Variable]:
+        """Return this identification object's query's treatments."""
+        return self.queryI.treatments
+    
+    @property
+    def treatmentsJ(self) -> set[Variable]:
+        """Return this identification object's query's treatments."""
+        return self.queryJ.treatments    
+    @property
+    def conditions(self) -> set[Variable]:
+        """Return this identification object's query's conditions."""
+        return self.query.conditions
+
+    def exchange_observation_with_action(
+        self, variables: Variable | Iterable[Variable]
+    ) -> Identification:
+        """Move the condition variable(s) to the treatments."""
+        return Identification(
+            query=self.query.exchange_observation_with_action(variables),
+            graph=self.graph,
+            estimand=self.estimand,
+        )
+
+    def exchange_action_with_observation(
+        self, variables: Variable | Iterable[Variable]
+    ) -> Identification:
+        """Move the treatment variable(s) to the conditions."""
+        return Identification(
+            query=self.query.exchange_action_with_observation(variables),
+            graph=self.graph,
+            estimand=self.estimand,
+        )
+
+    def with_treatments(self, extra_treatments: Iterable[Variable],I_union,Z_updated) -> Identification:
+        """Create a new identification with additional treatments."""
+
+        return ZIdentification(
+            query=self.query.with_treatments(extra_treatments),
+            queryI=self.queryI.with_treatments(I_union),
+            queryJ=self.queryJ,
+            Z=Z_updated,
+            estimand=self.estimand,
+            graph=self.graph,
+        )
+
+    def uncondition(self) -> Identification:
+        """Move the conditions to outcomes."""
+        return Identification(
+            query=self.query.uncondition(),
+            estimand=self.estimand,
+            graph=self.graph,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f'Identification(outcomes="{self.outcomes}, treatments="{self.treatments}",'
+            f'conditions="{self.conditions}",  graph="{self.graph!r}", estimand="{self.estimand}")'
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        """Check if the query, estimand, and graph are equal."""
+        return (
+            isinstance(other, Identification)
+            and self.query == other.query
+            and canonical_expr_equal(self.estimand, other.estimand)
+            and self.graph == other.graph
+        )
+
+
+def str_nodes_to_variable_nodes(graph: NxMixedGraph) -> NxMixedGraph:
+    """Generate a variable graph from this graph of strings."""
+    return NxMixedGraph.from_edges(
+        nodes={Variable.norm(node) for node in graph.nodes()},
+        directed=_convert(graph.directed),
+        undirected=_convert(graph.undirected),
+    )
+
+
+def _convert(graph: nx.Graph) -> list[tuple[Variable, Variable]]:
+    return [(Variable.norm(u), Variable.norm(v)) for u, v in graph.edges()]
+
+
+
+class Z2Identification:
+    """A package of a query and resulting estimand from identification on a graph."""
+
+    query: Query
+    graph: NxMixedGraph
+    estimand: Expression
+    set_treatments: Iterable[set[Variable]]
+
+    def __init__(
+        self,
+        query: Query,
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+        set_treatments: Iterable[set[Variable]] =None
+    ) -> None:
+        """Instantiate an identification.
+
+        :param query: The generalized identification query (outcomes/treatments/conditions)
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        """
+        self.query = query
+        self.graph = str_nodes_to_variable_nodes(graph)
+        self.estimand = P(self.graph.nodes()) if estimand is None else estimand
+        self.set_treatments = set_treatments
+
+    @classmethod
+    def from_parts(
+        cls,
+        outcomes: set[Variable],
+        treatments: set[Variable],
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+        conditions: set[Variable] | None = None,
+        set_treatments: Iterable[set[Variable]] = None
+    ) -> Identification:
+        """Instantiate an identification.
+
+        :param outcomes: The outcomes in the query
+        :param treatments: The treatments in the query (e.g., counterfactual variables)
+        :param conditions: The conditions in the query (e.g., coming after the bar)
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        :returns: An identification object
+        """
+        return cls(
+            query=Query(outcomes=outcomes, treatments=treatments, conditions=conditions),
+            graph=graph,
+            estimand=estimand,
+        )
+
+    @classmethod
+    def from_expression(
+        cls,
+        *,
+        query: Probability | Distribution,
+        graph: NxMixedGraph,
+        estimand: Expression | None = None,
+    ) -> Identification:
+        """Instantiate an identification.
+
+        :param query: The query probability expression
+        :param graph: The graph
+        :param estimand: If none is given, will use the joint distribution over all variables in the graph.
+        :returns: An identification object
+        """
+        return cls(
+            query=Query.from_expression(query),
+            graph=graph,
+            estimand=estimand,
+        )
+
+    @property
+    def outcomes(self) -> set[Variable]:
+        """Return this identification object's query's outcomes."""
+        return self.query.outcomes
+
+    @property
+    def treatments(self) -> set[Variable]:
+        """Return this identification object's query's treatments."""
+        return self.query.treatments
+
+    @property
+    def conditions(self) -> set[Variable]:
+        """Return this identification object's query's conditions."""
+        return self.query.conditions
+
+    def exchange_observation_with_action(
+        self, variables: Variable | Iterable[Variable]
+    ) -> Identification:
+        """Move the condition variable(s) to the treatments."""
+        return Identification(
+            query=self.query.exchange_observation_with_action(variables),
+            graph=self.graph,
+            estimand=self.estimand,
+        )
+
+    def exchange_action_with_observation(
+        self, variables: Variable | Iterable[Variable]
+    ) -> Identification:
+        """Move the treatment variable(s) to the conditions."""
+        return Identification(
+            query=self.query.exchange_action_with_observation(variables),
+            graph=self.graph,
+            estimand=self.estimand,
+        )
+
+    def with_treatments(self, extra_treatments: Iterable[Variable]) -> Identification:
+        """Create a new identification with additional treatments."""
+        return Identification(
+            query=self.query.with_treatments(extra_treatments),
+            estimand=self.estimand,
+            graph=self.graph,
+        )
+
+    def uncondition(self) -> Identification:
+        """Move the conditions to outcomes."""
+        return Identification(
+            query=self.query.uncondition(),
+            estimand=self.estimand,
+            graph=self.graph,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f'Identification(outcomes="{self.outcomes}, treatments="{self.treatments}",'
+            f'conditions="{self.conditions}",  graph="{self.graph!r}", estimand="{self.estimand}")'
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        """Check if the query, estimand, and graph are equal."""
+        return (
+            isinstance(other, Identification)
+            and self.query == other.query
+            and canonical_expr_equal(self.estimand, other.estimand)
+            and self.graph == other.graph
+        )
+
+
+def str_nodes_to_variable_nodes(graph: NxMixedGraph) -> NxMixedGraph:
+    """Generate a variable graph from this graph of strings."""
+    return NxMixedGraph.from_edges(
+        nodes={Variable.norm(node) for node in graph.nodes()},
+        directed=_convert(graph.directed),
+        undirected=_convert(graph.undirected),
+    )
+
+
+def _convert(graph: nx.Graph) -> list[tuple[Variable, Variable]]:
+    return [(Variable.norm(u), Variable.norm(v)) for u, v in graph.edges()]
