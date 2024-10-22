@@ -7,7 +7,7 @@ from y0.dsl import Expression, P, Probability, Product, Sum, Variable
 from y0.graph import NxMixedGraph
 from copy import deepcopy
 __all__ = [
-    "identify",
+    "z-identify",
 ]
 
 
@@ -48,7 +48,7 @@ def identify(identification: ZIdentification) -> Expression:
 
     t_graph1=deepcopy(graph)
     t_graph2=deepcopy(graph)
-    temp=graph.nodes() - treatments - I - J - graph.get_intervened_ancestors(treatments.union(I).union(J), outcomes)
+    temp=set(graph.nodes() - treatments - I - J - graph.get_intervened_ancestors(treatments.union(I).union(J), outcomes))
     Z_w=temp.intersection(Z)
     W=temp-Z
     if(len(Z_w.union(W))==0):
@@ -172,7 +172,7 @@ def line_3(identification: ZIdentification,w,z_w,Z_temp) -> ZIdentification:
     return identification.with_treatments(treatments.union(w),(identification.queryI.treatments).union(z_w),Z_temp) #inner code changed, I unioned with z_w
 
 
-def line_4(identification: Identification,Z) -> list[Identification]:
+def line_4(identification: ZIdentification,Z) -> list[ZIdentification]:
     r"""Run line 4 of the identification algorithm.
 
     The key line of the algorithm, it decomposes the problem into a set

@@ -346,7 +346,7 @@ class ZIdentification:
         query: Query,
         queryI: Query,
         queryJ: Query,
-        Z,
+        Z: set,
         graph: NxMixedGraph,
         estimand: Expression | None = None,
     ) -> None:
